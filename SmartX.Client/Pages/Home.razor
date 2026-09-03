@@ -1,0 +1,24 @@
+﻿@page "/"
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+
+@if(sensors is null){
+    <p>Loading...</p>
+}
+else{
+    <ul>
+        @foreach(var sensor in sensors){
+            <li>@sensor</li>
+        }
+        </ul>
+}
+
+@code{
+    //string[]? - the string might not exist
+    private List<string>? sensors;
+    protected override async Task OnInitializedAsync()
+    {
+        sensors = await Http.GetFromJsonAsync<List<string>>("api/sensors");
+    }
+}
