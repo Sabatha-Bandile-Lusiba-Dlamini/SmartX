@@ -7,5 +7,5 @@ namespace SmartX.Api.Models
         public string Location { get; set; } = string.Empty;
         public string Category { get; set; } = string.Empty;
         public DateTime Timestamp { get; set; }
-    }
+    } 
 }
