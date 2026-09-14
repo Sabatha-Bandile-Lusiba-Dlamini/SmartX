@@ -2,7 +2,7 @@ using SmartX.Api.Models;
 using SmartX.Api.Data;
 using SmartX.Api.Services;
 using System.Text.Json; 
-using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore; 
 
 var builder = WebApplication.CreateBuilder(args);  
 
