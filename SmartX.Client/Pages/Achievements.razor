@@ -1,0 +1,33 @@
+@page "/achievements"
+@using System.Net.Http.Json
+@using SmartX.Client.Models
+@inject HttpClient Http
+
+<PageTitle>Achievements</PageTitle>
+
+<h1>Mesh Network Achievements</h1>
+
+@if (achievements is null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <ul>
+        @foreach (var achievement in achievements)
+        {
+            <li style="@(achievement.Unlocked ? "font-weight:bold;" : "color:gray;")">
+                @(achievement.Unlocked ? "✅" : "🔒") @achievement.Title — @achievement.Description
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private List<Achievement>? achievements;
+
+    protected override async Task OnInitializedAsync()
+    {
+        achievements = await Http.GetFromJsonAsync<List<Achievement>>("api/achievements");
+    }
+}

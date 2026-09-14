@@ -1,7 +1,7 @@
 using SmartX.Api.Models;
 using SmartX.Api.Data;
+using SmartX.Api.Services;
 using System.Text.Json;
-
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,7 +25,7 @@ builder.Services.AddScoped<ZoneValidator>();
 builder.Services.AddDbContext<SmartXDbContext>(options => options.UseInMemoryDatabase("SmartXDb"));
 
 builder.Services.AddScoped(typeof(IStructProcessor<>), typeof(TelemetryPacketProcessor<>));
-
+builder.Services.AddScoped<AchievementService>();
 var app = builder.Build();
 
 //enabling CORS middleware
@@ -76,9 +76,9 @@ app.MapPost("/api/telemetry/switch", async (TelemetryPacket<bool> packet, IStruc
 });
 
 // proves the overload does real work, not just compiles
-app.MapPost("/api/meters/aggregate", (MeterReading meter1, MeterReading meter2) =>
+app.MapPost("/api/meters/aggregate", (MeterAggregateRequest request) =>
 {
-    var meter3 = meter1 + meter2; 
+    var meter3 = request.Meter1 + request.Meter2;
     return Results.Ok(meter3);
 });
 
@@ -133,7 +133,8 @@ app.MapPost("/api/sensors/{sensorId}/attachments", async (int sensorId, IFormFil
     await db.SaveChangesAsync();
 
     return Results.Ok(attachment);
-});
+})
+.DisableAntiforgery();
 
 app.MapPost("/api/telemetry/batch", async (TelemetryBatch batch, SmartXDbContext db) =>
 {
@@ -160,14 +161,12 @@ app.MapPost("/api/telemetry/batch", async (TelemetryBatch batch, SmartXDbContext
         }
     }
 
-    // transferring jagged array into optimised Collections (List<T>)
+    // transferring jagged array into optimized Collections (List<T>)
     db.Readings.AddRange(transferred);
     await db.SaveChangesAsync();
 
     return Results.Ok(new { count = transferred.Count });
 });
-
-builder.Services.AddScoped<AchievementService>();
 
 app.MapGet("/api/achievements", async (AchievementService achievements) =>
 {

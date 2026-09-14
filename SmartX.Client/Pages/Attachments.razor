@@ -1,0 +1,72 @@
+@page "/attachment"
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<PageTitle>Upload Attachment</PageTitle>
+
+<h1>Attach File to Sensor</h1>
+
+<div>
+    <label>Sensor ID:</label>
+    <InputNumber @bind-Value="sensorId" />
+</div>
+
+<div>
+    <InputFile OnChange="@HandleFileSelected" />
+</div>
+
+<button @onclick="HandleUpload" disabled="@(selectedFile is null || isUploading)">
+    @(isUploading ? "Uploading..." : "Upload")
+</button>
+
+@if (statusMessage is not null)
+{
+    <p>@statusMessage</p>
+}
+
+@code {
+    private int sensorId;
+    private IBrowserFile? selectedFile;
+    private bool isUploading;
+    private string? statusMessage;
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+    }
+
+    private async Task HandleUpload()
+    {
+        if (selectedFile is null) return;
+
+        isUploading = true;
+        statusMessage = null;
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+
+            // OpenReadStream file size default is 500KB.
+            // I'm raising it explicitly 
+            var fileContent = new StreamContent(selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024));
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(selectedFile.ContentType);
+
+            // "file" here matches the IFormFile parameter name on the API endpoint exactly, because ASP.NET Core binds multipart fields by name.
+            content.Add(fileContent, "file", selectedFile.Name);
+
+            var response = await Http.PostAsync($"api/sensors/{sensorId}/attachments", content);
+
+            statusMessage = response.IsSuccessStatusCode
+                ? $"'{selectedFile.Name}' uploaded successfully."
+                : "Upload failed — check the API is running and the sensor ID exists.";
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+}

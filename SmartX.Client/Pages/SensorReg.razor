@@ -1,0 +1,53 @@
+@page "/sensor"
+@using System.Net.Http.Json
+@using SmartX.Client.Models
+@inject HttpClient Http
+
+<PageTitle>Register Sensor</PageTitle>
+
+<h1>Register Sensor</h1>
+
+<EditForm Model="@newSensor" OnValidSubmit="@HandleSubmit">
+    <div>
+        <label>MAC Address:</label>
+        <InputText @bind-Value="newSensor.MacAddress" />
+    </div>
+    <div>
+        <label>Location:</label>
+        <InputText @bind-Value="newSensor.Location" />
+    </div>
+    <div>
+        <label>Category:</label>
+        <InputSelect @bind-Value="newSensor.Category">
+            <option value="Environmental">Environmental</option>
+            <option value="PowerConsumption">Power Consumption</option>
+            <option value="Actuator">Actuator</option>
+        </InputSelect>
+    </div>
+    <button type="submit">Register</button>
+</EditForm>
+
+@if (statusMessage is not null)
+{
+    <p>@statusMessage</p>
+}
+
+@code {
+    private Sensor newSensor = new();
+    private string? statusMessage;
+
+    private async Task HandleSubmit()
+    {
+        var response = await Http.PostAsJsonAsync("api/sensors", newSensor);
+
+        if (response.IsSuccessStatusCode)
+        {
+            statusMessage = $"Sensor '{newSensor.MacAddress}' registered successfully.";
+            newSensor = new(); // reset the form for the next entry
+        }
+        else
+        {
+            statusMessage = "Registration failed — check the API is running.";
+        }
+    }
+}

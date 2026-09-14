@@ -1,3 +1,7 @@
+using Microsoft.EntityFrameworkCore;
+using SmartX.Api.Models;
+using SmartX.Api.Data;
+
 namespace SmartX.Api.Services
 {
     public class AchievementService

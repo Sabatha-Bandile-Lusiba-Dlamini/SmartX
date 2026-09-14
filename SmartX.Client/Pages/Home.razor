@@ -1,24 +1,32 @@
 ﻿@page "/"
+@page "/fetch-data"
 @using System.Net.Http.Json
+@using SmartX.Client.Models
 @inject HttpClient Http
 
+<PageTitle>Home</PageTitle>
 
-@if(sensors is null){
+<h1>Sensors</h1>
+
+@if (sensors is null)
+{
     <p>Loading...</p>
 }
-else{
+else
+{
     <ul>
-        @foreach(var sensor in sensors){
-            <li>@sensor</li>
+        @foreach (var sensor in sensors)
+        {
+            <li>@sensor.MacAddress — @sensor.Location (@sensor.Category)</li>
         }
-        </ul>
+    </ul>
 }
 
-@code{
-    //string[]? - the string might not exist
-    private List<string>? sensors;
+@code {
+    private List<Sensor>? sensors;
+
     protected override async Task OnInitializedAsync()
     {
-        sensors = await Http.GetFromJsonAsync<List<string>>("api/sensors");
+        sensors = await Http.GetFromJsonAsync<List<Sensor>>("api/sensors");
     }
 }
