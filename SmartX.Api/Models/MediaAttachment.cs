@@ -1,6 +1,6 @@
 namespace SmartX.Api.Models
 { 
-public class MediaAttachment
+public class MediaAttachment 
     {
         public int Id { get; set; }
         public int SensorId { get; set; }
