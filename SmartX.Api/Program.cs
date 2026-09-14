@@ -4,7 +4,7 @@ using SmartX.Api.Services;
 using System.Text.Json; 
 using Microsoft.EntityFrameworkCore;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(args); 
 
 //registering CORS services and define a policy
 builder.Services.AddCors(options =>
