@@ -5,6 +5,6 @@ namespace SmartX.Api.Models
     public class TelemetryBatch
     {
         public int SensorId { get; set; }
-        public float[][] RawReadings { get; set; } = Array.Empty<float[]>();
+        public float[][] RawReadings { get; set; } = Array.Empty<float[]>(); 
     }
 }
