@@ -3,6 +3,7 @@ using SmartX.Api.Data;
 using SmartX.Api.Services;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using SmartX.Api.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,13 +27,31 @@ builder.Services.AddDbContext<SmartXDbContext>(options => options.UseInMemoryDat
 
 builder.Services.AddScoped(typeof(IStructProcessor<>), typeof(TelemetryPacketProcessor<>));
 builder.Services.AddScoped<AchievementService>();
+
+/* I used singletons because 
+ the queues, dictionary, stack and log are in-memory state that must be
+ shared across requests and the background worker. */
+builder.Services.AddSingleton<TelemetryQueueService>();
+builder.Services.AddSingleton<DeviceRegistry>();
+builder.Services.AddSingleton<TelemetryLog>();
+builder.Services.AddSingleton<CommandHistoryService>();
+builder.Services.AddSingleton<PredictiveEngine>();
+builder.Services.AddSingleton<StreamProcessor>();
+builder.Services.AddHostedService<StreamProcessorWorker>();
+
+
+
 var app = builder.Build();
+
+app.Services.GetRequiredService<DeviceRegistry>().Seed();
+//after useRouting & before useAuthentication
+app.UseCors("AllowSmartX.Client");
+app.MapStreamEndpoints();
 
 //enabling CORS middleware
 app.UseRouting();
 
-//after useRouting & before useAuthentication
-app.UseCors("AllowSmartX.Client");
+
 
 app.UseAuthorization();
 app.MapControllers();

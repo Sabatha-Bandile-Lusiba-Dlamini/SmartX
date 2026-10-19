@@ -1,0 +1,218 @@
+@page "/command-stream"
+@using System.Net.Http.Json
+@using SmartX.Client.Models
+@inject HttpClient Http
+@implements IDisposable
+
+<PageTitle>Real-Time Command Stream</PageTitle>
+
+<h1 class="mb-3">Real-Time Command Stream and History</h1>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_status is { ActiveAlerts.Count: > 0 })
+{
+    <div class="alert alert-warning">
+        <strong>@_status.ActiveAlerts.Count active alert(s):</strong> @string.Join(", ", _status.ActiveAlerts)
+    </div>
+}
+
+<div class="mb-3">
+    <span class="badge bg-secondary me-1">Standard queue: @(_status?.StandardQueued ?? 0)</span>
+    <span class="badge bg-danger me-1">Critical queue: @(_status?.CriticalQueued ?? 0)</span>
+    <span class="badge bg-info text-dark">Log entries: @(_status?.LogEntries ?? 0)</span>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-12 col-md-5">
+        <input class="form-control" placeholder="Search by MAC / node id or category"
+               @bind="_query" @bind:after="Refresh" />
+    </div>
+    <div class="col-6 col-md-3">
+        <select class="form-select" @bind="_category" @bind:after="Refresh">
+            <option value="">All categories</option>
+            <option>Irrigation</option>
+            <option>Power</option>
+            <option>Climate</option>
+            <option>Soil</option>
+        </select>
+    </div>
+    <div class="col-6 col-md-4 d-flex align-items-center">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="alertsOnly" @bind="_alertsOnly" @bind:after="Refresh" />
+            <label class="form-check-label" for="alertsOnly">Active alerts only</label>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-8">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr><th>Device</th><th>Category</th><th>Status</th><th>Last value</th><th>Pump / Relay</th><th>Override</th></tr>
+                </thead>
+                <tbody>
+                @foreach (var d in _devices)
+                {
+                    <tr class="@(d.HasAlert ? "table-danger" : "")">
+                        <td>@d.DeviceId</td>
+                        <td>@d.Category</td>
+                        <td>@d.Status</td>
+                        <td>@(d.LastMetric == "" ? "-" : $"{d.LastValue:F1} {d.Unit}")</td>
+                        <td>@(d.PumpOn ? "Pump ON" : "Pump off") / @(d.RelayOn ? "Relay ON" : "Relay off")</td>
+                        <td>
+                            @if (d.Category == "Irrigation")
+                            {
+                                <button class="btn btn-sm btn-success me-1" @onclick='() => Send(d.DeviceId, "PumpOn")'>Pump On</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick='() => Send(d.DeviceId, "PumpOff")'>Pump Off</button>
+                            }
+                            else if (d.Category == "Power")
+                            {
+                                <button class="btn btn-sm btn-success me-1" @onclick='() => Send(d.DeviceId, "RelayOn")'>Relay On</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick='() => Send(d.DeviceId, "RelayOff")'>Relay Off</button>
+                            }
+                            else
+                            {
+                                <span class="text-muted">n/a</span>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (_devices.Count == 0)
+                {
+                    <tr><td colspan="6" class="text-muted">No devices match.</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+
+        <h5 class="mt-4">Recent telemetry (sorted by timestamp)</h5>
+        <div class="table-responsive" style="max-height:260px;overflow-y:auto">
+            <table class="table table-sm">
+                <thead><tr><th>Time (UTC)</th><th>Device</th><th>Metric</th><th>Value</th><th>Status</th></tr></thead>
+                <tbody>
+                @foreach (var e in _log)
+                {
+                    <tr class="@(e.IsCritical ? "table-danger" : "")">
+                        <td>@e.Timestamp.ToString("HH:mm:ss.fff")</td>
+                        <td>@e.DeviceId</td>
+                        <td>@e.Metric</td>
+                        <td>@e.Value.ToString("F1") @e.Unit</td>
+                        <td>@e.Status</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+        <div class="card mb-3">
+            <div class="card-header">Suggested Actions / Automated Insights</div>
+            <ul class="list-group list-group-flush">
+                @foreach (var s in _suggestions)
+                {
+                    <li class="list-group-item">
+                        <span class="badge @(s.Kind == "Problem" ? "bg-danger" : s.Kind == "Action" ? "bg-primary" : "bg-info text-dark")">@s.Kind</span>
+                        <strong>@s.Title</strong><br /><small>@s.Detail</small>
+                    </li>
+                }
+                @if (_suggestions.Count == 0)
+                {
+                    <li class="list-group-item text-muted">No suggestions yet. Issue commands and use filters to build history.</li>
+                }
+            </ul>
+        </div>
+
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                Command history
+                <button class="btn btn-sm btn-warning" disabled="@(_history.Count == 0)" @onclick="Undo">Undo last</button>
+            </div>
+            <ul class="list-group list-group-flush">
+                @foreach (var c in _history)
+                {
+                    <li class="list-group-item"><small>@c.Timestamp.ToString("HH:mm:ss") &middot; @c.Command &rarr; @c.DeviceId</small></li>
+                }
+                @if (_history.Count == 0)
+                {
+                    <li class="list-group-item text-muted">No commands issued.</li>
+                }
+            </ul>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<DeviceStateDto> _devices = new();
+    private List<TelemetryEventDto> _log = new();
+    private List<SuggestionDto> _suggestions = new();
+    private List<CommandRecordDto> _history = new();
+    private StreamStatusDto? _status;
+
+    private string _query = string.Empty;
+    private string _category = string.Empty;
+    private bool _alertsOnly;
+    private string? _error;
+    private System.Threading.Timer? _timer;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Refresh();
+        _timer = new System.Threading.Timer(_ => _ = InvokeAsync(async () => { await Refresh(); StateHasChanged(); }),
+                           null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
+    private async Task Refresh()
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            var url = $"/api/stream/devices?q={Uri.EscapeDataString(_query)}&category={Uri.EscapeDataString(_category)}&alertsOnly={_alertsOnly.ToString().ToLowerInvariant()}";
+            _devices = await Http.GetFromJsonAsync<List<DeviceStateDto>>(url) ?? new();
+            _log = await Http.GetFromJsonAsync<List<TelemetryEventDto>>("/api/stream/log?take=30") ?? new();
+            _history = await Http.GetFromJsonAsync<List<CommandRecordDto>>("/api/stream/commands") ?? new();
+            _status = await Http.GetFromJsonAsync<StreamStatusDto>("/api/stream/status");
+            _suggestions = await Http.GetFromJsonAsync<List<SuggestionDto>>("/api/stream/suggestions") ?? new();
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not reach the API: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task Send(string deviceId, string command)
+    {
+        var response = await Http.PostAsJsonAsync("/api/stream/commands", new CommandRequestDto { DeviceId = deviceId, Command = command });
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadFromJsonAsync<ErrorDto>();
+            _error = err?.Error ?? "Command failed.";
+        }
+        await Refresh();
+    }
+
+    private async Task Undo()
+    {
+        var response = await Http.PostAsync("/api/stream/commands/undo", null);
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadFromJsonAsync<ErrorDto>();
+            _error = err?.Error ?? "Undo failed.";
+        }
+        await Refresh();
+    }
+
+    public void Dispose() => _timer?.Dispose();
+}
