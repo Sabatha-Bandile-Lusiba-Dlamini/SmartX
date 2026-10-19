@@ -2,7 +2,7 @@ using System.Net.Http.Json;
 
 // Usage:  dotnet run -- [normal|alert|burst|disconnect] [baseUrl]
 string mode = args.Length > 0 ? args[0].ToLowerInvariant() : "normal";
-string baseUrl = args.Length > 1 ? args[1] : "http://localhost:5159";
+string baseUrl = args.Length > 1 ? args[1] : "http://localhost:5159"; 
 
 using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 var rng = new Random();
