@@ -1,6 +1,6 @@
 namespace SmartX.Client.Models;
 
-public class DeviceStateDto
+public class DeviceStateDto 
 {
     public string DeviceId { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
