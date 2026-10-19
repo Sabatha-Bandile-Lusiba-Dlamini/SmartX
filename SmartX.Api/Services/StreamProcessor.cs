@@ -4,7 +4,7 @@ namespace SmartX.Api.Services;
 
 //Drains the queues (critical lane first) into the registry and the sorted log.
 public class StreamProcessor
-{
+{ 
     private readonly TelemetryQueueService _queue;
     private readonly DeviceRegistry _registry;
     private readonly TelemetryLog _log;
