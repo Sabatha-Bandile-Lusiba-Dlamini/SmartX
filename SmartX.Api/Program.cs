@@ -1,11 +1,16 @@
 using SmartX.Api.Models;
 using SmartX.Api.Data;
 using SmartX.Api.Services;
+<<<<<<< HEAD
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SmartX.Api.Endpoints;
+=======
+using System.Text.Json; 
+using Microsoft.EntityFrameworkCore; 
+>>>>>>> 278c8a594b4e53abb3fe2d47dc3ac4c838ade6ad
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(args);  
 
 //registering CORS services and define a policy
 builder.Services.AddCors(options =>

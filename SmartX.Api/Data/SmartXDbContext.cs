@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SmartX.Api.Models;
 
-public class SmartXDbContext : DbContext
+public class SmartXDbContext : DbContext 
 {
     public SmartXDbContext(DbContextOptions<SmartXDbContext> options)
         : base(options)

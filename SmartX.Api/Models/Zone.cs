@@ -1,8 +1,8 @@
 namespace SmartX.Api.Models
 {
-    public class Zone
+    public class Zone 
     {
-        public int Id { get; set; }
+        public int Id { get; set; } 
         public string Name { get; set; } = string.Empty;
 
         // Nullable: a top-level zone (the Facility) has no parent

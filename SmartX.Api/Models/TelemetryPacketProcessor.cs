@@ -5,7 +5,7 @@ namespace SmartX.Api.Models
     public interface IStructProcessor<T> where T : struct
     {
         Task ProcessAndSaveAsync(T data, int sensorId, string unit);
-    }
+    } 
 
     internal class TelemetryPacketProcessor<T> : IStructProcessor<T> where T : struct
     {

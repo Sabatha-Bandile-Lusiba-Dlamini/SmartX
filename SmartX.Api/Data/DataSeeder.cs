@@ -4,7 +4,7 @@ using SmartX.Api.Data;
 
 
 namespace SmartX.Api.Data
-{
+{ 
     public static class DataSeeder
     {
         public static async Task SeedAsync(SmartXDbContext db)
