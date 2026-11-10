@@ -16,20 +16,6 @@ Prerequisites
   
 - Git
 
-Project Structure
-
-
-SmartX/
-├── SmartX.Api/          # Backend: Minimal API, EF Core, models, services
-│   ├── Models/          # Sensor, Zone, TelemetryReading, MediaAttachment, etc.
-│   ├── Data/             # SmartXDbContext, DataSeeder
-│   ├── Services/         # ZoneValidator, AchievementService
-│   └── Program.cs        # Endpoint definitions and app startup
-├── SmartX.Client/        # Frontend: Blazor WebAssembly
-│   └── Pages/            # Sensor registration, achievements, file upload, etc.
-└── SmartX.sln
-
-
 Setup and Running
 
 1. Clone the repository
