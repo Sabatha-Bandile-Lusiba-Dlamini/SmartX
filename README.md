@@ -1,4 +1,4 @@
-# Smart-X IoT Mesh Ecosystem
+# Smart-X IoT Mesh Ecosystem (Currently In Development)
 
 A simulated IoT sensor mesh for smart agriculture and energy monitoring: an ingestion API, a configuration dashboard, and a real-time command stream. Built in C# with ASP.NET Core Minimal APIs (.NET 10), Blazor WebAssembly and Entity Framework Core.
 
