@@ -1,7 +1,12 @@
 using SmartX.Api.Models;
 using SmartX.Api.Data;
 using SmartX.Api.Services;
+<<<<<<< HEAD
 using System.Text.Json;
+=======
+<<<<<<< HEAD
+using System.Text.Json; 
+>>>>>>> 5af0d7a951b82e525359066f4ba83c8e08cfb746
 using Microsoft.EntityFrameworkCore;
 using SmartX.Api.Endpoints;
 using System.Text.Json; 

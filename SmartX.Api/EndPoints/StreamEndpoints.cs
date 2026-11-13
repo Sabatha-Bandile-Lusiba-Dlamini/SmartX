@@ -2,7 +2,7 @@ using SmartX.Api.Models;
 using SmartX.Api.Services;
 
 namespace SmartX.Api.Endpoints;
-
+ 
 public static class StreamEndpoints
 {
     public static void MapStreamEndpoints(this IEndpointRouteBuilder app)

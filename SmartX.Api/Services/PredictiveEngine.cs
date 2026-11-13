@@ -6,7 +6,7 @@ namespace SmartX.Api.Services;
 // Pattern analysis over command history, search history and the telemetry log.
 // Produces "Suggested Actions" and "Automated Insights".
 
-public class PredictiveEngine
+public class PredictiveEngine 
 {
     private readonly CommandHistoryService _commands;
     private readonly TelemetryLog _log;
