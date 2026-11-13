@@ -2,10 +2,11 @@ using SmartX.Api.Models;
 
 namespace SmartX.Api.Services;
 
-//Dictionary keyed by MAC/node id gives O(1) lookup of a device's latest state.
-//HashSet holds unique active alert keys, so a repeated "Disconnected" report is stored once.
 
-public class DeviceRegistry 
+// Dictionary keyed by MAC/node id gives O(1) lookup of a device's latest state.
+// HashSet holds unique active alert keys, so a repeated "Disconnected" report is stored once.
+
+public class DeviceRegistry
 {
     private readonly Dictionary<string, DeviceState> _devices = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _activeAlerts = new(StringComparer.OrdinalIgnoreCase);

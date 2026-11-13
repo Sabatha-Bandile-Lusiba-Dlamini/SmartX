@@ -1,0 +1,394 @@
+@page "/network-topology"
+@using System.Globalization
+@using System.Net
+@using System.Net.Http.Json
+@using System.Text
+@using SmartX.Client.Models
+@inject HttpClient Http
+@implements IDisposable
+
+<PageTitle>Network Topology</PageTitle>
+
+<h1 class="mb-3">Network Topology and Mesh Routing</h1>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<div class="row g-2 mb-3 align-items-end">
+    <div class="col-12 col-md-6">
+        <label class="form-label mb-1">Sensor node (MAC address / id)</label>
+        <select class="form-select" @bind="_selected" @bind:after="OnSelectedChanged">
+            <option value="">Select a node to trace...</option>
+            @if (_topology != null)
+            {
+                @foreach (var n in _topology.Nodes)
+                {
+                    <option value="@n.Id">@n.Id @(n.IsUp ? "" : "(DOWN)")</option>
+                }
+            }
+        </select>
+    </div>
+    <div class="col-6 col-md-3">
+        <label class="form-label mb-1">Connectivity search</label>
+        <select class="form-select" @bind="_method" @bind:after="Poll">
+            <option value="bfs">Breadth-first (BFS)</option>
+            <option value="dfs">Depth-first (DFS)</option>
+        </select>
+    </div>
+    <div class="col-6 col-md-3">
+        <button class="btn btn-outline-secondary w-100" @onclick="Poll">Refresh now</button>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-xl-7">
+        <div class="card">
+            <div class="card-header">Live mesh map (updates every 3 seconds)</div>
+            <div class="card-body">
+                @BuildSvg()
+                <div class="small mt-2">
+                    <span class="badge" style="background:#0d6efd">Gateway</span>
+                    <span class="badge" style="background:#198754">Node up</span>
+                    <span class="badge" style="background:#dc3545">Node down</span>
+                    <span class="badge" style="background:#198754">Green line = minimum spanning tree</span>
+                    <span class="badge" style="background:#fd7e14">Orange line = selected route</span>
+                    <span class="badge bg-secondary">Dashed grey = link to a down node</span>
+                </div>
+                <div class="small text-muted mt-1">Number on a line = link cost (power / latency, lower is better).</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-5">
+        <div class="card mb-3">
+            <div class="card-header">Route to gateway</div>
+            <div class="card-body">
+                @if (string.IsNullOrEmpty(_selected))
+                {
+                    <span class="text-muted">Select a node above to trace the path its packets take.</span>
+                }
+                else if (_route == null)
+                {
+                    <span class="text-muted">Loading...</span>
+                }
+                else if (!_route.Reachable)
+                {
+                    <div class="alert alert-warning mb-0">No live path from <strong>@_selected</strong> to the gateway. The node is down or cut off.</div>
+                }
+                else
+                {
+                    <div class="fw-bold">@string.Join(" → ", _route.Path.Select(Short))</div>
+                    <div class="small text-muted">@_route.Hops hops, total cost @_route.Cost.ToString("0.##", CultureInfo.InvariantCulture)</div>
+                }
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Connectivity from the gateway (@(_method.ToUpperInvariant()))</div>
+            <div class="card-body">
+                @if (_traversal == null)
+                {
+                    <span class="text-muted">Loading...</span>
+                }
+                else
+                {
+                    <div class="small">Visit order: @string.Join(" → ", _traversal.VisitOrder.Select(Short))</div>
+                    @if (_traversal.Unreachable.Count == 0)
+                    {
+                        <div class="text-success mt-2">All devices are connected.</div>
+                    }
+                    else
+                    {
+                        <div class="mt-2"><strong>@_traversal.Unreachable.Count device(s) not connected:</strong></div>
+                        <ul class="mb-0">
+                            @foreach (var u in _traversal.Unreachable)
+                            {
+                                <li>
+                                    @u.Id: @u.Reason
+                                    @if (u.LiveNeighbours.Count > 0)
+                                    {
+                                        <span class="text-muted"> (traffic can hop via @string.Join(", ", u.LiveNeighbours.Select(Short)))</span>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Power-efficient routing tree (Prim's MST)</div>
+            <div class="card-body">
+                @if (_mst == null)
+                {
+                    <span class="text-muted">Loading...</span>
+                }
+                else
+                {
+                    <div class="small mb-2">
+                        Total cost <strong>@_mst.TotalCost.ToString("0.##", CultureInfo.InvariantCulture)</strong>,
+                        @_mst.NodesSpanned nodes spanned, @_mst.NodesLeftOut left out.
+                    </div>
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>From</th><th>To</th><th>Cost</th></tr></thead>
+                        <tbody>
+                            @foreach (var e in _mst.Edges)
+                            {
+                                <tr><td>@Short(e.From)</td><td>@Short(e.To)</td><td>@e.Cost.ToString("0.##", CultureInfo.InvariantCulture)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">Telemetry history (AVL tree range query)</div>
+    <div class="card-body">
+        @if (string.IsNullOrEmpty(_selected))
+        {
+            <span class="text-muted">Select a node above to query its history.</span>
+        }
+        else
+        {
+            <div class="row g-2 mb-2 align-items-end">
+                <div class="col-6 col-md-3">
+                    <label class="form-label mb-1">From</label>
+                    <input type="datetime-local" class="form-control" @bind="_from" />
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label mb-1">To</label>
+                    <input type="datetime-local" class="form-control" @bind="_to" />
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label mb-1">UTC offset (h)</label>
+                    <input type="number" class="form-control" @bind="_offset" />
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label mb-1">Metric (optional)</label>
+                    <input class="form-control" placeholder="moisture" @bind="_metric" />
+                </div>
+                <div class="col-12 col-md-2">
+                    <button class="btn btn-primary w-100" @onclick="LoadHistory">Load history</button>
+                </div>
+            </div>
+            <div class="mb-2">
+                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => SetRange(2)">Last 2 h</button>
+                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => SetRange(24)">Last 24 h</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => SetRange(168)">Last 7 days</button>
+                <span class="small text-muted ms-2">Times are entered and shown in your time (UTC offset above, South Africa is +2).</span>
+            </div>
+
+            @if (_history != null)
+            {
+                <div class="small mb-2">
+                    <span class="badge bg-primary">Matched: @_history.Matched</span>
+                    <span class="badge bg-secondary">Stored for this node: @_history.TotalReadingsInTree</span>
+                    <span class="badge bg-success">Tree nodes visited: @_history.NodesVisited</span>
+                    <span class="badge bg-info text-dark">Tree height: @_history.TreeHeight</span>
+                </div>
+                <div class="table-responsive" style="max-height:340px;overflow-y:auto">
+                    <table class="table table-sm">
+                        <thead><tr><th>Time</th><th>Metric</th><th>Value</th><th>Status</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in Enumerable.Reverse(_history.Readings))
+                            {
+                                <tr class="@(r.IsCritical ? "table-danger" : "")">
+                                    <td>@r.Timestamp.AddHours(_offset).ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                    <td>@r.Metric</td>
+                                    <td>@r.Value.ToString("0.0", CultureInfo.InvariantCulture) @r.Unit</td>
+                                    <td>@r.Status</td>
+                                </tr>
+                            }
+                            @if (_history.Readings.Count == 0)
+                            {
+                                <tr><td colspan="4" class="text-muted">No readings in this range.</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private TopologyViewDto? _topology;
+    private MstResultDto? _mst;
+    private TraversalResultDto? _traversal;
+    private RouteResultDto? _route;
+    private HistoryResponseDto? _history;
+
+    private string _selected = string.Empty;
+    private string _method = "bfs";
+    private string _metric = string.Empty;
+    private int _offset = 2;                    // hours ahead of UTC (South Africa)
+    private DateTime _from;
+    private DateTime _to;
+    private string? _error;
+    private bool _busy;
+    private System.Threading.Timer? _timer;
+
+    // Fixed map positions (viewBox 600 x 380). Nodes not listed here are placed on a spare row.
+    private static readonly Dictionary<string, (int X, int Y)> Positions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["GATEWAY"] = (300, 50),
+        ["RELAY-A"] = (170, 140),
+        ["RELAY-B"] = (430, 140),
+        ["AA:BB:CC:00:00:01"] = (90, 250),
+        ["AA:BB:CC:00:00:02"] = (250, 250),
+        ["AA:BB:CC:00:00:03"] = (350, 250),
+        ["AA:BB:CC:00:00:04"] = (510, 250)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        SetRangeValues(2);
+        await Poll();
+        _timer = new System.Threading.Timer(
+            _ => _ = InvokeAsync(async () => { await Poll(); StateHasChanged(); }),
+            null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private async Task Poll()
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            _topology = await Http.GetFromJsonAsync<TopologyViewDto>("/api/network/topology");
+            _mst = await Http.GetFromJsonAsync<MstResultDto>("/api/network/mst");
+            _traversal = await Http.GetFromJsonAsync<TraversalResultDto>($"/api/network/reachable?method={_method}");
+            if (!string.IsNullOrEmpty(_selected))
+                _route = await Http.GetFromJsonAsync<RouteResultDto>($"/api/network/route/{Uri.EscapeDataString(_selected)}");
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not reach the API: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task OnSelectedChanged()
+    {
+        _route = null;
+        _history = null;
+        await Poll();
+    }
+
+    private void SetRangeValues(int hours)
+    {
+        var nowLocal = DateTime.UtcNow.AddHours(_offset);
+        _to = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, nowLocal.Hour, nowLocal.Minute, 0);
+        _from = _to.AddHours(-hours);
+    }
+
+    private async Task SetRange(int hours)
+    {
+        SetRangeValues(hours);
+        await LoadHistory();
+    }
+
+    private async Task LoadHistory()
+    {
+        if (string.IsNullOrEmpty(_selected))
+        {
+            _error = "Select a node first.";
+            return;
+        }
+
+        string Utc(DateTime local) =>
+            local.AddHours(-_offset).ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture) + "Z";
+
+        var url = $"/api/history/{Uri.EscapeDataString(_selected)}"
+                  + $"?from={Uri.EscapeDataString(Utc(_from))}&to={Uri.EscapeDataString(Utc(_to))}&take=200";
+        if (!string.IsNullOrWhiteSpace(_metric))
+            url += $"&metric={Uri.EscapeDataString(_metric.Trim())}";
+
+        try
+        {
+            _history = await Http.GetFromJsonAsync<HistoryResponseDto>(url);
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not load history: {ex.Message}";
+        }
+    }
+
+    private static string Short(string id) =>
+        id.Contains(':') ? "Node " + id.Substring(id.LastIndexOf(':') + 1) : id;
+
+    private MarkupString BuildSvg()
+    {
+        if (_topology == null) return new MarkupString("<div class=\"text-muted\">Loading map...</div>");
+
+        // Work out a position for every node.
+        var pos = new Dictionary<string, (int X, int Y)>(StringComparer.OrdinalIgnoreCase);
+        int spare = 0;
+        foreach (var n in _topology.Nodes)
+        {
+            if (Positions.TryGetValue(n.Id, out var p)) pos[n.Id] = p;
+            else pos[n.Id] = (60 + spare++ * 100, 340);
+        }
+
+        var down = new HashSet<string>(_topology.Nodes.Where(n => !n.IsUp).Select(n => n.Id), StringComparer.OrdinalIgnoreCase);
+        var mstEdges = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (_mst != null)
+            foreach (var e in _mst.Edges) mstEdges.Add(EdgeKey(e.From, e.To));
+
+        var routeEdges = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (_route is { Reachable: true })
+            for (int i = 0; i < _route.Path.Count - 1; i++)
+                routeEdges.Add(EdgeKey(_route.Path[i], _route.Path[i + 1]));
+
+        var sb = new StringBuilder();
+        sb.Append("<svg viewBox=\"0 0 600 380\" style=\"width:100%;height:auto;max-height:420px\" xmlns=\"http://www.w3.org/2000/svg\">");
+
+        foreach (var edge in _topology.Edges)
+        {
+            if (!pos.TryGetValue(edge.From, out var a) || !pos.TryGetValue(edge.To, out var b)) continue;
+
+            string key = EdgeKey(edge.From, edge.To);
+            string stroke = "#6c757d", width = "1.5", dash = "";
+            if (down.Contains(edge.From) || down.Contains(edge.To)) { stroke = "#adb5bd"; dash = " stroke-dasharray=\"5 4\""; }
+            else if (routeEdges.Contains(key)) { stroke = "#fd7e14"; width = "5"; }
+            else if (mstEdges.Contains(key)) { stroke = "#198754"; width = "3"; }
+
+            sb.Append($"<line x1=\"{a.X}\" y1=\"{a.Y}\" x2=\"{b.X}\" y2=\"{b.Y}\" stroke=\"{stroke}\" stroke-width=\"{width}\"{dash} />");
+
+            int mx = (a.X + b.X) / 2, my = (a.Y + b.Y) / 2;
+            sb.Append($"<text x=\"{mx}\" y=\"{my - 4}\" font-size=\"11\" text-anchor=\"middle\" fill=\"#495057\">{edge.Cost.ToString("0.##", CultureInfo.InvariantCulture)}</text>");
+        }
+
+        foreach (var n in _topology.Nodes)
+        {
+            var p = pos[n.Id];
+            bool isGateway = n.Id.Equals("GATEWAY", StringComparison.OrdinalIgnoreCase);
+            bool selected = n.Id.Equals(_selected, StringComparison.OrdinalIgnoreCase);
+            string fill = isGateway ? "#0d6efd" : n.IsUp ? "#198754" : "#dc3545";
+            string ring = selected ? "#fd7e14" : "#212529";
+            string ringWidth = selected ? "4" : "2";
+
+            sb.Append($"<circle cx=\"{p.X}\" cy=\"{p.Y}\" r=\"20\" fill=\"{fill}\" stroke=\"{ring}\" stroke-width=\"{ringWidth}\" />");
+            sb.Append($"<text x=\"{p.X}\" y=\"{p.Y + 38}\" font-size=\"12\" text-anchor=\"middle\" fill=\"#212529\">{WebUtility.HtmlEncode(Short(n.Id))}</text>");
+        }
+
+        sb.Append("</svg>");
+        return new MarkupString(sb.ToString());
+    }
+
+    private static string EdgeKey(string a, string b) =>
+        string.Compare(a, b, StringComparison.OrdinalIgnoreCase) <= 0 ? $"{a}|{b}" : $"{b}|{a}";
+
+    public void Dispose() => _timer?.Dispose();
+}

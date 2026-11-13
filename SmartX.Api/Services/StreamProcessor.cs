@@ -2,21 +2,24 @@ using SmartX.Api.Models;
 
 namespace SmartX.Api.Services;
 
-//Drains the queues (critical lane first) into the registry and the sorted log.
+
+// Drains the queues (critical lane first) into the registry, the sorted log and the AVL history.
+
 public class StreamProcessor
 {
     private readonly TelemetryQueueService _queue;
     private readonly DeviceRegistry _registry;
     private readonly TelemetryLog _log;
+    private readonly HistoricalIndex _history;
 
-    public StreamProcessor(TelemetryQueueService queue, DeviceRegistry registry, TelemetryLog log)
+    public StreamProcessor(TelemetryQueueService queue, DeviceRegistry registry, TelemetryLog log, HistoricalIndex history)
     {
         _queue = queue;
         _registry = registry;
         _log = log;
+        _history = history;
     }
 
-    //Processes up to max events. Returns the processing order so tests can see critical events jump the line.
     public List<string> Drain(int max = 100)
     {
         var order = new List<string>();
@@ -24,6 +27,7 @@ public class StreamProcessor
         {
             _registry.Apply(e);
             _log.Add(e);
+            _history.Add(e);
             order.Add($"{(wasCritical ? "CRITICAL" : "standard")}:{e.DeviceId}:{e.Status}");
         }
         return order;
